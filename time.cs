@@ -13,7 +13,7 @@ namespace blobFunctions
         };
 
         [Function("time")]
-        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest req)
+        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "post")] HttpRequest req)
         {
 
             Console.WriteLine("time request made");
