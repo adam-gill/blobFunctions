@@ -11,7 +11,7 @@ namespace blobFunctions
 {
     public static class UploadFile
     {
-        private static readonly string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+        private static readonly string? connectionString = Environment.GetEnvironmentVariable("AzureBlobStorage");
 
         public class UploadRequest
         {
