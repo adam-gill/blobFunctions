@@ -1,16 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace blobFunctions
 {
     public static class UploadFile
     {
         private static readonly string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+
+        public class UploadRequest
+        {
+            [JsonPropertyName("userId")]
+            public required string UserId { get; set; }
+        }
 
         public class UploadResponse
         {
@@ -19,25 +26,38 @@ namespace blobFunctions
         }
 
         [Function("UploadFile")]
-        public static async Task<IActionResult> Run([Microsoft.Azure.Functions.Worker.HttpTrigger(Microsoft.Azure.Functions.Worker.AuthorizationLevel.Function, "post", Route = null)] HttpRequest req, ILogger log)
+        public static async Task<IActionResult> Run([Microsoft.Azure.Functions.Worker.HttpTrigger(Microsoft.Azure.Functions.Worker.AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
         {
-            log.LogInformation("C# HTTP trigger function processing file upload request.");
+            Console.WriteLine("request started");
 
             try
             {
-                // Get the B2C UID from the request
-                string? userId = req.Query["userId"];
-                if (string.IsNullOrEmpty(userId))
+                // Get the form data including both file and userId
+                var formData = await req.ReadFormAsync();
+
+                // Get userId from form data
+                var userIdJson = formData["userId"].ToString();
+                if (string.IsNullOrEmpty(userIdJson))
                 {
                     return new BadRequestObjectResult(new UploadResponse 
                     { 
                         Success = false, 
-                        Message = "User ID is required." 
+                        Message = "User ID is required in the form data." 
+                    });
+                }
+
+                // Parse the JSON string to get the userId
+                var uploadRequest = JsonSerializer.Deserialize<UploadRequest>(userIdJson);
+                if (uploadRequest == null || string.IsNullOrEmpty(uploadRequest.UserId))
+                {
+                    return new BadRequestObjectResult(new UploadResponse 
+                    { 
+                        Success = false, 
+                        Message = "Invalid User ID format." 
                     });
                 }
 
                 // Get the file from the request
-                var formData = await req.ReadFormAsync();
                 var file = formData.Files["file"];
                 if (file == null)
                 {
@@ -52,7 +72,7 @@ namespace blobFunctions
                 var blobServiceClient = new BlobServiceClient(connectionString);
 
                 // Create container name (lowercase for Azure requirements)
-                string containerName = $"user-{userId.ToLower()}";
+                string containerName = $"user-{uploadRequest.UserId.ToLower()}";
                 
                 // Get container client and create if it doesn't exist
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
@@ -68,17 +88,25 @@ namespace blobFunctions
                     await blobClient.UploadAsync(stream, true);
                 }
 
-                log.LogInformation($"File {blobName} uploaded successfully to container {containerName}");
-
                 return new OkObjectResult(new UploadResponse 
                 { 
                     Success = true, 
                     Message = $"File {file.FileName} uploaded successfully." 
                 });
             }
+            catch (JsonException jex)
+            {
+                return new BadRequestObjectResult(new UploadResponse 
+                { 
+                    Success = false, 
+                    Message = "Invalid userId format: " + jex.Message 
+                });
+            }
             catch (Exception ex)
             {
-                log.LogError($"Error uploading file: {ex.Message}");
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                
                 return new ObjectResult(new UploadResponse 
                 { 
                     Success = false, 
