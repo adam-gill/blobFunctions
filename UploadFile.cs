@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
 using Azure.Storage.Blobs;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Azure.Storage.Blobs.Models;
+using HttpTriggerAttribute = Microsoft.Azure.Functions.Worker.HttpTriggerAttribute;
+using AuthorizationLevel = Microsoft.Azure.Functions.Worker.AuthorizationLevel;
 
 namespace blobFunctions
 {
@@ -25,8 +26,26 @@ namespace blobFunctions
             public required string Message { get; set; }
         }
 
+        public class FileInfo
+        {
+            public string? Name { get; set; }
+            public long SizeInBytes { get; set; }
+            public string? ContentType { get; set; }
+            public DateTimeOffset? LastModified { get; set; }
+            public string? BlobUrl { get; set; }
+            public IDictionary<string, string>? Metadata { get; set; }
+            public string? MD5Hash { get; set; }
+        }
+
+        public class ListFilesResponse
+        {
+            public bool Success { get; set; }
+            public string? Message { get; set; }
+            public List<FileInfo>? Files { get; set; }
+        }
+
         [Function("UploadFile")]
-        public static async Task<IActionResult> Run([Microsoft.Azure.Functions.Worker.HttpTrigger(Microsoft.Azure.Functions.Worker.AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
+        public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
         {
             Console.WriteLine("request started");
 
@@ -114,5 +133,85 @@ namespace blobFunctions
                 }) { StatusCode = 500 };
             }
         }
+    
+        [Function("ListUserFiles")]
+        public static async Task<IActionResult> RunLsFile(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "files/{userId}")] HttpRequest req,
+            string userId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId))
+                {
+                    return new BadRequestObjectResult(new ListFilesResponse
+                    {
+                        Success = false,
+                        Message = "User ID is required.",
+                        Files = []
+                    });
+                }
+
+                // Create BlobServiceClient
+                var blobServiceClient = new BlobServiceClient(connectionString);
+
+                // Get container name (lowercase for Azure requirements)
+                string containerName = $"user-{userId.ToLower()}";
+                
+                // Get container client
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+                // Check if container exists
+                if (!await containerClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new ListFilesResponse
+                    {
+                        Success = false,
+                        Message = "No files found for this user.",
+                        Files = []
+                    });
+                }
+
+                var filesList = new List<FileInfo>();
+
+                // List all blobs in the container
+                await foreach (BlobItem blobItem in containerClient.GetBlobsAsync())
+                {
+                    var blobClient = containerClient.GetBlobClient(blobItem.Name);
+                    var properties = await blobClient.GetPropertiesAsync();
+
+                    filesList.Add(new FileInfo
+                    {
+                        Name = blobItem.Name,
+                        SizeInBytes = blobItem.Properties.ContentLength ?? 0,
+                        ContentType = properties.Value.ContentType,
+                        LastModified = blobItem.Properties.LastModified,
+                        BlobUrl = blobClient.Uri.ToString(),
+                        Metadata = properties.Value.Metadata,
+                        MD5Hash = Convert.ToBase64String(blobItem.Properties.ContentHash)
+                    });
+                }
+
+                return new OkObjectResult(new ListFilesResponse
+                {
+                    Success = true,
+                    Message = $"Found {filesList.Count} files.",
+                    Files = filesList
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+                
+                return new ObjectResult(new ListFilesResponse
+                {
+                    Success = false,
+                    Message = "Error retrieving files: " + ex.Message,
+                    Files = new List<FileInfo>()
+                }) { StatusCode = 500 };
+            }
+        }
+
+    
     }
 }
