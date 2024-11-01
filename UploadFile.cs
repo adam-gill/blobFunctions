@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using Azure.Storage.Blobs.Models;
 using HttpTriggerAttribute = Microsoft.Azure.Functions.Worker.HttpTriggerAttribute;
 using AuthorizationLevel = Microsoft.Azure.Functions.Worker.AuthorizationLevel;
+using Azure;
 
 namespace blobFunctions
 {
@@ -44,6 +45,12 @@ namespace blobFunctions
             public List<FileInfo>? Files { get; set; }
         }
 
+        public class DeleteFileRequest
+        {
+            public string? UserId { get; set; }
+            public string? BlobName { get; set; }
+        }
+
         [Function("UploadFile")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
         {
@@ -58,10 +65,10 @@ namespace blobFunctions
                 var userIdJson = formData["userId"].ToString();
                 if (string.IsNullOrEmpty(userIdJson))
                 {
-                    return new BadRequestObjectResult(new UploadResponse 
-                    { 
-                        Success = false, 
-                        Message = "User ID is required in the form data." 
+                    return new BadRequestObjectResult(new UploadResponse
+                    {
+                        Success = false,
+                        Message = "User ID is required in the form data."
                     });
                 }
 
@@ -69,10 +76,10 @@ namespace blobFunctions
                 var uploadRequest = JsonSerializer.Deserialize<UploadRequest>(userIdJson);
                 if (uploadRequest == null || string.IsNullOrEmpty(uploadRequest.UserId))
                 {
-                    return new BadRequestObjectResult(new UploadResponse 
-                    { 
-                        Success = false, 
-                        Message = "Invalid User ID format." 
+                    return new BadRequestObjectResult(new UploadResponse
+                    {
+                        Success = false,
+                        Message = "Invalid User ID format."
                     });
                 }
 
@@ -80,10 +87,10 @@ namespace blobFunctions
                 var file = formData.Files["file"];
                 if (file == null)
                 {
-                    return new BadRequestObjectResult(new UploadResponse 
-                    { 
-                        Success = false, 
-                        Message = "No file was uploaded." 
+                    return new BadRequestObjectResult(new UploadResponse
+                    {
+                        Success = false,
+                        Message = "No file was uploaded."
                     });
                 }
 
@@ -92,7 +99,7 @@ namespace blobFunctions
 
                 // Create container name (lowercase for Azure requirements)
                 string containerName = $"user-{uploadRequest.UserId.ToLower()}";
-                
+
                 // Get container client and create if it doesn't exist
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
                 await containerClient.CreateIfNotExistsAsync();
@@ -107,33 +114,34 @@ namespace blobFunctions
                     await blobClient.UploadAsync(stream, true);
                 }
 
-                return new OkObjectResult(new UploadResponse 
-                { 
-                    Success = true, 
-                    Message = $"File {file.FileName} uploaded successfully." 
+                return new OkObjectResult(new UploadResponse
+                {
+                    Success = true,
+                    Message = $"File {file.FileName} uploaded successfully."
                 });
             }
             catch (JsonException jex)
             {
-                return new BadRequestObjectResult(new UploadResponse 
-                { 
-                    Success = false, 
-                    Message = "Invalid userId format: " + jex.Message 
+                return new BadRequestObjectResult(new UploadResponse
+                {
+                    Success = false,
+                    Message = "Invalid userId format: " + jex.Message
                 });
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error: {ex.Message}");
                 Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-                
-                return new ObjectResult(new UploadResponse 
-                { 
-                    Success = false, 
-                    Message = "Error uploading file: " + ex.Message 
-                }) { StatusCode = 500 };
+
+                return new ObjectResult(new UploadResponse
+                {
+                    Success = false,
+                    Message = "Error uploading file: " + ex.Message
+                })
+                { StatusCode = 500 };
             }
         }
-    
+
         [Function("ListUserFiles")]
         public static async Task<IActionResult> RunLsFile(
             [HttpTrigger(AuthorizationLevel.Function, "get", Route = "files/{userId}")] HttpRequest req,
@@ -156,7 +164,7 @@ namespace blobFunctions
 
                 // Get container name (lowercase for Azure requirements)
                 string containerName = $"user-{userId.ToLower()}";
-                
+
                 // Get container client
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
 
@@ -202,16 +210,86 @@ namespace blobFunctions
             {
                 Console.WriteLine($"Error: {ex.Message}");
                 Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-                
+
                 return new ObjectResult(new ListFilesResponse
                 {
                     Success = false,
                     Message = "Error retrieving files: " + ex.Message,
                     Files = new List<FileInfo>()
-                }) { StatusCode = 500 };
+                })
+                { StatusCode = 500 };
             }
         }
 
-    
+        [Function("DeleteFile")]
+        public static async Task<IActionResult> RunDeleteFile(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "deleteFile")] HttpRequest req)
+        {
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<DeleteFileRequest>(requestBody);
+
+                if (string.IsNullOrEmpty(data?.UserId) || string.IsNullOrEmpty(data?.BlobName))
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        success = false,
+                        message = "Container name and blob name are required"
+                    });
+                }
+
+                var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                var containerClient = blobServiceClient.GetBlobContainerClient($"user-{data.UserId}");
+                var blobClient = containerClient.GetBlobClient(data.BlobName);
+
+                if (await blobClient.ExistsAsync())
+                {
+                    await blobClient.DeleteAsync();
+
+                    return new OkObjectResult(new
+                    {
+                        success = true,
+                        message = $"Successfully deleted file '{data.BlobName}'"
+                    });
+                }
+                else
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        success = false,
+                        message = $"Blob '{data.BlobName}' not found in container user-{data.UserId}"
+                    });
+                }
+            }
+            catch (RequestFailedException ex)
+            {
+                return new ObjectResult(new
+                {
+                    success = false,
+                    message = $"Azure Storage error: {ex.Message}",
+                    errorCode = ex.ErrorCode,
+                    status = ex.Status
+                })
+                {
+                    StatusCode = ex.Status
+                };
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new
+                {
+                    success = false,
+                    message = $"An error occurred: {ex.Message}"
+                })
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+
+
     }
 }
