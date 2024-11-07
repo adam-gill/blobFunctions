@@ -105,7 +105,8 @@ namespace blobFunctions
                 await containerClient.CreateIfNotExistsAsync();
 
                 // Generate unique blob name
-                string blobName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{file.FileName}";
+                // string blobName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{file.FileName}";
+                string blobName = file.FileName;
                 var blobClient = containerClient.GetBlobClient(blobName);
 
                 // Upload the file
@@ -243,10 +244,9 @@ namespace blobFunctions
                 string containerName = $"user-{data.UserId}";
 
                 var blobServiceClient = new BlobServiceClient(connectionString);
-                Console.WriteLine(connectionString);
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
                 var blobClient = containerClient.GetBlobClient(blobName);
-
+                
                 bool blobWasDeleted = await blobClient.DeleteIfExistsAsync();
 
                 if (blobWasDeleted)
