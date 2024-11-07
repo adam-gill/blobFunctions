@@ -215,7 +215,7 @@ namespace blobFunctions
                 {
                     Success = false,
                     Message = "Error retrieving files: " + ex.Message,
-                    Files = new List<FileInfo>()
+                    Files = []
                 })
                 { StatusCode = 500 };
             }
@@ -239,19 +239,22 @@ namespace blobFunctions
                     });
                 }
 
-                var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                string blobName = data.BlobName;
+                string containerName = $"user-{data.UserId}";
+
                 var blobServiceClient = new BlobServiceClient(connectionString);
-                var containerClient = blobServiceClient.GetBlobContainerClient($"user-{data.UserId}");
-                var blobClient = containerClient.GetBlobClient(data.BlobName);
+                Console.WriteLine(connectionString);
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+                var blobClient = containerClient.GetBlobClient(blobName);
 
-                if (await blobClient.ExistsAsync())
+                bool blobWasDeleted = await blobClient.DeleteIfExistsAsync();
+
+                if (blobWasDeleted)
                 {
-                    await blobClient.DeleteAsync();
-
                     return new OkObjectResult(new
                     {
                         success = true,
-                        message = $"Successfully deleted file '{data.BlobName}'"
+                        message = $"Successfully deleted file'{data.BlobName}'"
                     });
                 }
                 else
@@ -259,7 +262,7 @@ namespace blobFunctions
                     return new NotFoundObjectResult(new
                     {
                         success = false,
-                        message = $"Blob '{data.BlobName}' not found in container user-{data.UserId}"
+                        message = $"Blob '{blobName}' not found in container user-{data.UserId}"
                     });
                 }
             }
