@@ -54,8 +54,6 @@ namespace blobFunctions
         [Function("UploadFile")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
         {
-            Console.WriteLine("request started");
-
             try
             {
                 // Get the form data including both file and userId
@@ -93,6 +91,7 @@ namespace blobFunctions
                         Message = "No file was uploaded."
                     });
                 }
+
 
                 // Create BlobServiceClient
                 var blobServiceClient = new BlobServiceClient(connectionString);
