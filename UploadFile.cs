@@ -101,17 +101,28 @@ namespace blobFunctions
 
                 // Get container client and create if it doesn't exist
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-                await containerClient.CreateIfNotExistsAsync();
+                await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
 
                 // Generate unique blob name
                 // string blobName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{file.FileName}";
                 string blobName = file.FileName;
                 var blobClient = containerClient.GetBlobClient(blobName);
 
+                // Set Content-Type based on file content type
+                var contentType = file.ContentType;
+                // Set Content-Disposition to inline to display the file in the browser if possible
+                var blobHttpHeaders = new BlobHttpHeaders
+                {
+                    ContentType = contentType,
+                    ContentDisposition = "inline; filename=" + blobName
+                };
+
                 // Upload the file
                 using (var stream = file.OpenReadStream())
                 {
-                    await blobClient.UploadAsync(stream, true);
+                    await blobClient.UploadAsync(stream, new BlobUploadOptions {
+                        HttpHeaders = blobHttpHeaders
+                    });
                 }
 
                 return new OkObjectResult(new UploadResponse
@@ -245,7 +256,7 @@ namespace blobFunctions
                 var blobServiceClient = new BlobServiceClient(connectionString);
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
                 var blobClient = containerClient.GetBlobClient(blobName);
-                
+
                 bool blobWasDeleted = await blobClient.DeleteIfExistsAsync();
 
                 if (blobWasDeleted)
