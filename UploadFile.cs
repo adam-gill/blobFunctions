@@ -45,6 +45,13 @@ namespace blobFunctions
             public List<FileInfo>? Files { get; set; }
         }
 
+        public class ListFileResponse
+        {
+            public bool Success { get; set; }
+            public string? Message { get; set; }
+            public FileInfo? File { get; set; }
+        }
+
         public class DeleteFileRequest
         {
             public string? UserId { get; set; }
@@ -120,7 +127,8 @@ namespace blobFunctions
                 // Upload the file
                 using (var stream = file.OpenReadStream())
                 {
-                    await blobClient.UploadAsync(stream, new BlobUploadOptions {
+                    await blobClient.UploadAsync(stream, new BlobUploadOptions
+                    {
                         HttpHeaders = blobHttpHeaders
                     });
                 }
@@ -152,6 +160,83 @@ namespace blobFunctions
                 { StatusCode = 500 };
             }
         }
+
+        [Function("GetFile")]
+        public static async Task<IActionResult> RunGetFile(
+    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "get/{userId}/{fileName}")] HttpRequest req,
+    string userId, string fileName)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(fileName))
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        Success = false,
+                        Message = "User ID and Filename are required.",
+                        File = new FileInfo()
+                    });
+                }
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                string containerName = $"user-{userId.ToLower()}";
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+                if (!await containerClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = "No files found for this user.",
+                        File = new FileInfo()
+                    });
+                }
+
+                var blobClient = containerClient.GetBlobClient(fileName);
+                if (!await blobClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = $"File '{fileName}' not found for user {userId}.",
+                        File = new FileInfo()
+                    });
+                }
+
+                // Retrieve blob properties and metadata
+                var properties = await blobClient.GetPropertiesAsync();
+                var fileInfo = new FileInfo
+                {
+                    Name = fileName,
+                    SizeInBytes = properties.Value.ContentLength,
+                    ContentType = properties.Value.ContentType,
+                    LastModified = properties.Value.LastModified,
+                    BlobUrl = blobClient.Uri.ToString(),
+                    Metadata = properties.Value.Metadata,
+                    MD5Hash = properties.Value.ContentHash != null ? Convert.ToBase64String(properties.Value.ContentHash) : null
+                };
+
+                return new OkObjectResult(new
+                {
+                    Success = true,
+                    Message = "File information retrieved successfully.",
+                    File = fileInfo
+                });
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new
+                {
+                    Success = false,
+                    Message = "An error occurred while retrieving the file information.",
+                    Error = ex.Message
+                })
+                {
+                    StatusCode = 500
+                };
+            }
+        }
+
+
 
         [Function("ListUserFiles")]
         public static async Task<IActionResult> RunLsFile(
