@@ -267,7 +267,7 @@ namespace blobFunctions
                 // Check if container exists
                 if (!await containerClient.ExistsAsync())
                 {
-                    return new NotFoundObjectResult(new ListFilesResponse
+                    return new OkObjectResult(new ListFilesResponse
                     {
                         Success = false,
                         Message = "No files found for this user.",
