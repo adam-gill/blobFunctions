@@ -58,6 +58,12 @@ namespace blobFunctions
             public string? BlobName { get; set; }
         }
 
+        public class GetFileRequest
+        {
+            public string? UserId { get; set; }
+            public string? FileName { get; set; }
+        }
+
         [Function("UploadFile")]
         public static async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req)
         {
@@ -163,20 +169,28 @@ namespace blobFunctions
 
         [Function("GetFile")]
         public static async Task<IActionResult> RunGetFile(
-    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "get/{userId}/{fileName}")] HttpRequest req,
-    string userId, string fileName)
+    [HttpTrigger(AuthorizationLevel.Function, "get", Route = "getFile")] HttpRequest req)
         {
             try
             {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<GetFileRequest>(requestBody, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+
+                string? userId = data?.UserId;
+                string? fileName = data?.FileName;
+
                 if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(fileName))
                 {
                     return new BadRequestObjectResult(new
                     {
                         Success = false,
                         Message = "User ID and Filename are required.",
-                        File = new FileInfo()
                     });
                 }
+
                 var blobServiceClient = new BlobServiceClient(connectionString);
                 string containerName = $"user-{userId.ToLower()}";
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
@@ -186,8 +200,7 @@ namespace blobFunctions
                     return new NotFoundObjectResult(new
                     {
                         Success = false,
-                        Message = "No files found for this user.",
-                        File = new FileInfo()
+                        Message = "File not found for this user.",
                     });
                 }
 
@@ -198,7 +211,6 @@ namespace blobFunctions
                     {
                         Success = false,
                         Message = $"File '{fileName}' not found for user {userId}.",
-                        File = new FileInfo()
                     });
                 }
 
