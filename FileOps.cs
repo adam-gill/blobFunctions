@@ -11,7 +11,7 @@ using Azure;
 
 namespace blobFunctions
 {
-    public static class UploadFile
+    public static class FileOps
     {
         private static readonly string? connectionString = Environment.GetEnvironmentVariable("AzureBlobStorage");
 
@@ -110,11 +110,18 @@ namespace blobFunctions
                 var blobServiceClient = new BlobServiceClient(connectionString);
 
                 // Create container name (lowercase for Azure requirements)
-                string containerName = $"user-{uploadRequest.UserId.ToLower()}";
+                string userId = uploadRequest.UserId.ToLower();
+                string containerName = $"user-{userId}";
 
                 // Get container client and create if it doesn't exist
                 var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
-                await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+                // await containerClient.CreateIfNotExistsAsync(PublicAccessType.Blob);
+
+                if (!await containerClient.ExistsAsync())
+                {
+                    await containerClient.CreateAsync(PublicAccessType.Blob);
+                    await DatabaseHelper.InsertUser(userId, null, false);
+                }
 
                 // Generate unique blob name
                 // string blobName = $"{DateTime.UtcNow:yyyyMMddHHmmss}-{file.FileName}";
@@ -168,79 +175,79 @@ namespace blobFunctions
         }
 
         [Function("GetFile")]
-public static async Task<IActionResult> RunGetFile(
+        public static async Task<IActionResult> RunGetFile(
     [HttpTrigger(AuthorizationLevel.Function, "get", Route = "getFile")] HttpRequest req)
-{
-    try
-    {
-        string? userId = req.Query["userId"];
-        string? fileName = req.Query["fileName"];
-
-        if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(fileName))
         {
-            return new BadRequestObjectResult(new
+            try
             {
-                Success = false,
-                Message = "User ID and Filename are required as query parameters.",
-            });
-        }
+                string? userId = req.Query["userId"];
+                string? fileName = req.Query["fileName"];
 
-        var blobServiceClient = new BlobServiceClient(connectionString);
-        string containerName = $"user-{userId.ToLower()}";
-        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+                if (string.IsNullOrEmpty(userId) || string.IsNullOrEmpty(fileName))
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        Success = false,
+                        Message = "User ID and Filename are required as query parameters.",
+                    });
+                }
 
-        if (!await containerClient.ExistsAsync())
-        {
-            return new NotFoundObjectResult(new
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                string containerName = $"user-{userId.ToLower()}";
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+                if (!await containerClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = "File not found for this user.",
+                    });
+                }
+
+                var blobClient = containerClient.GetBlobClient(fileName);
+                if (!await blobClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = $"File '{fileName}' not found for user {userId}.",
+                    });
+                }
+
+                // Retrieve blob properties and metadata
+                var properties = await blobClient.GetPropertiesAsync();
+                var fileInfo = new FileInfo
+                {
+                    Name = fileName,
+                    SizeInBytes = properties.Value.ContentLength,
+                    ContentType = properties.Value.ContentType,
+                    LastModified = properties.Value.LastModified,
+                    BlobUrl = blobClient.Uri.ToString(),
+                    Metadata = properties.Value.Metadata,
+                    MD5Hash = properties.Value.ContentHash != null ? Convert.ToBase64String(properties.Value.ContentHash) : null
+                };
+
+                return new OkObjectResult(new
+                {
+                    Success = true,
+                    Message = "File information retrieved successfully.",
+                    File = fileInfo
+                });
+            }
+            catch (Exception ex)
             {
-                Success = false,
-                Message = "File not found for this user.",
-            });
+                return new ObjectResult(new
+                {
+                    Success = false,
+                    Message = "An error occurred while retrieving the file information.",
+                    Error = ex.Message
+                })
+                {
+                    StatusCode = 500
+                };
+            }
         }
-
-        var blobClient = containerClient.GetBlobClient(fileName);
-        if (!await blobClient.ExistsAsync())
-        {
-            return new NotFoundObjectResult(new
-            {
-                Success = false,
-                Message = $"File '{fileName}' not found for user {userId}.",
-            });
-        }
-
-        // Retrieve blob properties and metadata
-        var properties = await blobClient.GetPropertiesAsync();
-        var fileInfo = new FileInfo
-        {
-            Name = fileName,
-            SizeInBytes = properties.Value.ContentLength,
-            ContentType = properties.Value.ContentType,
-            LastModified = properties.Value.LastModified,
-            BlobUrl = blobClient.Uri.ToString(),
-            Metadata = properties.Value.Metadata,
-            MD5Hash = properties.Value.ContentHash != null ? Convert.ToBase64String(properties.Value.ContentHash) : null
-        };
-
-        return new OkObjectResult(new
-        {
-            Success = true,
-            Message = "File information retrieved successfully.",
-            File = fileInfo
-        });
-    }
-    catch (Exception ex)
-    {
-        return new ObjectResult(new
-        {
-            Success = false,
-            Message = "An error occurred while retrieving the file information.",
-            Error = ex.Message
-        })
-        {
-            StatusCode = 500
-        };
-    }
-}
 
 
 
