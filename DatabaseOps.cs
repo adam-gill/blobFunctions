@@ -56,7 +56,7 @@ namespace blobFunctions
                 throw new ArgumentException("Table or column name cannot be null or empty.");
             }
 
-            string query = $@"SELECT * FROM {table} WHERE {column} = @condition";
+            string query = condition == "none" ? $@"SELECT * FROM {table}" : $@"SELECT * FROM {table} WHERE {column} = @condition";
 
             using var connection = new SqlConnection(_connectionString);
             await connection.OpenAsync();

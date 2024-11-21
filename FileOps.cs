@@ -119,8 +119,8 @@ namespace blobFunctions
 
                 if (!await containerClient.ExistsAsync())
                 {
-                    await containerClient.CreateAsync(PublicAccessType.Blob);
                     await DatabaseHelper.InsertUser(userId, null, false);
+                    await containerClient.CreateAsync(PublicAccessType.Blob);
                 }
 
                 // Generate unique blob name
