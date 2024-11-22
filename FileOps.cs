@@ -8,6 +8,7 @@ using Azure.Storage.Blobs.Models;
 using HttpTriggerAttribute = Microsoft.Azure.Functions.Worker.HttpTriggerAttribute;
 using AuthorizationLevel = Microsoft.Azure.Functions.Worker.AuthorizationLevel;
 using Azure;
+using Azure.Storage.Sas;
 
 namespace blobFunctions
 {
@@ -120,7 +121,28 @@ namespace blobFunctions
                 if (!await containerClient.ExistsAsync())
                 {
                     await DatabaseHelper.InsertUser(userId, null, false);
-                    await containerClient.CreateAsync(PublicAccessType.Blob);
+                    await containerClient.CreateAsync();
+
+                    // Generate SAS token
+                    var startsOn = DateTimeOffset.UtcNow;
+                    var expiresOn = startsOn.AddDays(360);
+
+                    var sasBuilder = new BlobSasBuilder
+                    {
+                        BlobContainerName = containerName,
+                        Resource = "c", // SAS for container
+                        ExpiresOn = expiresOn,
+                        StartsOn = startsOn,
+                        Protocol = SasProtocol.HttpsAndHttp
+                    };
+                    sasBuilder.SetPermissions(BlobContainerSasPermissions.Read | BlobContainerSasPermissions.Write | BlobContainerSasPermissions.List);
+
+                    var sasToken = containerClient.GenerateSasUri(sasBuilder).ToString();
+                    if (sasToken.Contains('?')) {
+                        sasToken = sasToken[sasToken.IndexOf('?')..];
+                    }
+
+                    await DatabaseHelper.InsertSASToken(userId, sasToken, startsOn, expiresOn);
                 }
 
                 // Generate unique blob name
@@ -399,8 +421,6 @@ namespace blobFunctions
                 };
             }
         }
-
-
 
     }
 }

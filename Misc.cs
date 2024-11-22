@@ -61,7 +61,7 @@ namespace blobFunctions
                 {
                     Success = true,
                     Result = result,
-                    Message = result.Count == 0 ? "No results found" : "Result found bop",
+                    Message = result.Count == 0 ? "No results found" : "Result found",
                 });
             }
             catch (Exception ex)

@@ -82,5 +82,38 @@ namespace blobFunctions
             return results;
         }
 
+        public static async Task InsertSASToken(string userId, string sas_token, DateTimeOffset start, DateTimeOffset end)
+        {
+            try {
+
+            
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                throw new ArgumentException("userId is required to insert SAS token.");
+            }
+
+            string query = $@"
+                INSERT INTO sas_table (user_id, sas_token, start_time, end_time)
+                VALUES (@userId, @sas_token, @start, @end)
+            ";
+
+            using var connection = new SqlConnection(_connectionString);
+            var command = new SqlCommand(query, connection);
+            await connection.OpenAsync();
+
+            // Add parameters to avoid SQL injection
+            command.Parameters.AddWithValue("@userId", userId);
+            command.Parameters.AddWithValue("@sas_token", sas_token);
+            command.Parameters.AddWithValue("@start", start);
+            command.Parameters.AddWithValue("@end", end);
+
+            await command.ExecuteNonQueryAsync();
+
+            } catch (Exception ex) {
+                throw new InvalidOperationException($"failed to insert SAS token for {userId}", ex);
+            }
+
+        }
+
     }
 }
