@@ -22,6 +22,18 @@ namespace blobFunctions
             public required string UserId { get; set; }
         }
 
+        public class RenameFileRequest
+        {
+            [JsonPropertyName("userId")]
+            public required string UserId { get; set; }
+
+            [JsonPropertyName("oldFileName")]
+            public required string OldFileName { get; set; }
+
+            [JsonPropertyName("newFileName")]
+            public required string NewFileName { get; set; }
+        }
+
         public class UploadResponse
         {
             public bool Success { get; set; }
@@ -63,6 +75,83 @@ namespace blobFunctions
         {
             public string? UserId { get; set; }
             public string? FileName { get; set; }
+        }
+
+        [Function("RenameFile")]
+        public static async Task<IActionResult> RunRenameFile(
+    [HttpTrigger(AuthorizationLevel.Function, "put", Route = "renameFile")] HttpRequest req)
+        {
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<RenameFileRequest>(requestBody);
+
+                if (data == null || string.IsNullOrEmpty(data.UserId) ||
+                    string.IsNullOrEmpty(data.OldFileName) || string.IsNullOrEmpty(data.NewFileName))
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        Success = false,
+                        Message = "UserId, old file name, and new file name are required"
+                    });
+                }
+
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                string containerName = $"user-{data.UserId.ToLower()}";
+                var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+                if (!await containerClient.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = "User container not found"
+                    });
+                }
+
+                var sourceBlob = containerClient.GetBlobClient(data.OldFileName);
+                var destinationBlob = containerClient.GetBlobClient(data.NewFileName);
+
+                if (!await sourceBlob.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        Success = false,
+                        Message = $"Source file '{data.OldFileName}' not found"
+                    });
+                }
+
+                // Copy the source blob to the destination
+                await destinationBlob.StartCopyFromUriAsync(sourceBlob.Uri);
+
+                // Delete the source blob
+                await sourceBlob.DeleteAsync();
+
+                return new OkObjectResult(new
+                {
+                    Success = true,
+                    Message = $"Successfully renamed '{data.OldFileName}' to '{data.NewFileName}'"
+                });
+            }
+            catch (RequestFailedException ex)
+            {
+                return new ObjectResult(new
+                {
+                    Success = false,
+                    Message = $"Azure Storage error: {ex.Message}",
+                    ErrorCode = ex.ErrorCode
+                })
+                { StatusCode = ex.Status };
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new
+                {
+                    Success = false,
+                    Message = $"An error occurred: {ex.Message}"
+                })
+                { StatusCode = StatusCodes.Status500InternalServerError };
+            }
         }
 
         [Function("UploadFile")]
@@ -138,7 +227,8 @@ namespace blobFunctions
                     sasBuilder.SetPermissions(BlobContainerSasPermissions.Read | BlobContainerSasPermissions.Write | BlobContainerSasPermissions.List);
 
                     var sasToken = containerClient.GenerateSasUri(sasBuilder).ToString();
-                    if (sasToken.Contains('?')) {
+                    if (sasToken.Contains('?'))
+                    {
                         sasToken = sasToken[sasToken.IndexOf('?')..];
                     }
 
