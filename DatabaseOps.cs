@@ -79,6 +79,35 @@ namespace blobFunctions
             return results;
         }
 
+        public static async Task<string> GetSASToken(string userId)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(userId))
+                {
+                    throw new ArgumentException("userId is required to get SAS token.");
+                }
+
+                string query = @"
+                SELECT sas_token FROM dbo.sas_table 
+                WHERE user_id = @userId";
+
+                using var connection = new NpgsqlConnection(_connectionString);
+                var command = new NpgsqlCommand(query, connection);
+                await connection.OpenAsync();
+
+                command.Parameters.AddWithValue("@userId", userId);
+
+                var result = await command.ExecuteScalarAsync();
+
+                return result?.ToString() ?? "";
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Failed to get SAS token for {userId}" + ex.Message);
+            }
+        }
+
         public static async Task InsertSASToken(string userId, string sas_token, DateTimeOffset start, DateTimeOffset end)
         {
             try

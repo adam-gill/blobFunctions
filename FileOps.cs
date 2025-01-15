@@ -402,6 +402,8 @@ namespace blobFunctions
 
                 var filesList = new List<FileInfo>();
 
+                var sasToken = await DatabaseHelper.GetSASToken(userId);
+
                 // List all blobs in the container
                 await foreach (BlobItem blobItem in containerClient.GetBlobsAsync())
                 {
@@ -414,7 +416,7 @@ namespace blobFunctions
                         SizeInBytes = blobItem.Properties.ContentLength ?? 0,
                         ContentType = properties.Value.ContentType,
                         LastModified = blobItem.Properties.LastModified,
-                        BlobUrl = blobClient.Uri.ToString(),
+                        BlobUrl = blobClient.Uri.ToString() + sasToken,
                         Metadata = properties.Value.Metadata,
                         MD5Hash = Convert.ToBase64String(blobItem.Properties.ContentHash)
                     });
