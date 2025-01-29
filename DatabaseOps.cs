@@ -144,5 +144,32 @@ namespace blobFunctions
 
         }
 
+        public static async Task ShareFileDBOperation(string UserId, string UUID, string ShareFileName, string PublicBlobURL, string Operation)
+        {
+
+            if (string.IsNullOrWhiteSpace(UserId) || string.IsNullOrWhiteSpace(UUID) || string.IsNullOrWhiteSpace(ShareFileName) || string.IsNullOrWhiteSpace(PublicBlobURL))
+            {
+                throw new ArgumentException("Not all parameters were provided.");
+            }
+
+            if (!string.Equals(Operation, "create") && !string.Equals(Operation, "edit"))
+            {
+                throw new ArgumentException($"Invalid operation parameter, accepted operations are 'create' and 'edit'. Operation was {Operation}.");
+            }
+            
+            string CreateQuery = @"INSERT INTO dbo.shares (name, ""publicBlobURL"", uuid, owner, time_created)
+                VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP)";
+            using var connection = new NpgsqlConnection(_connectionString);
+            var command = new NpgsqlCommand(CreateQuery, connection);
+            await connection.OpenAsync();
+
+            command.Parameters.AddWithValue("@ShareFileName", ShareFileName);
+            command.Parameters.AddWithValue("@PublicBlobURL", PublicBlobURL); 
+            command.Parameters.AddWithValue("@UUID", UUID);
+            command.Parameters.AddWithValue("@UserId", UserId);
+
+            await command.ExecuteNonQueryAsync();
+        }
+
     }
 }

@@ -22,6 +22,24 @@ namespace blobFunctions
             public required string UserId { get; set; }
         }
 
+        public class ShareFileRequest
+        {
+            [JsonPropertyName("userId")]
+            public string? UserId { get; set; }
+
+            [JsonPropertyName("blobURL")]
+            public string? BlobURL { get; set; }
+
+            [JsonPropertyName("shareName")]
+            public string? ShareName { get; set; }
+
+            [JsonPropertyName("operation")]
+            public string? Operation { get; set; }
+
+            [JsonPropertyName("uuid")]
+            public string? UUID { get; set; }
+        }
+
         public class RenameFileRequest
         {
             [JsonPropertyName("userId")]
@@ -75,6 +93,29 @@ namespace blobFunctions
         {
             public string? UserId { get; set; }
             public string? FileName { get; set; }
+        }
+
+        private static string GetFileNameFromBlobUrl(string blobUrl)
+        {
+            // Remove any query parameters
+            string urlWithoutParams = blobUrl.Split('?')[0];
+
+            // Get the last segment of the URL
+            string fileName = urlWithoutParams.Split('/').Last();
+
+            return fileName;
+        }
+
+        private static string GetFileExtension(string blobUrl)
+        {
+            // Remove any query parameters
+            string urlWithoutParams = blobUrl.Split('?')[0];
+
+            // Get the last segment and extract extension
+            string fileName = urlWithoutParams.Split('/').Last();
+            string extension = Path.GetExtension(fileName);
+
+            return extension;
         }
 
         [Function("RenameFile")]
@@ -511,6 +552,86 @@ namespace blobFunctions
                 {
                     StatusCode = StatusCodes.Status500InternalServerError
                 };
+            }
+        }
+
+        [Function("ShareOperation")]
+        public static async Task<IActionResult> RunValidateShareRequest(
+    [HttpTrigger(AuthorizationLevel.Function, "post", Route = "shareOperation")] HttpRequest req)
+        {
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<ShareFileRequest>(requestBody);
+
+                bool isValid = !string.IsNullOrEmpty(data?.UserId) &&
+                              !string.IsNullOrEmpty(data?.BlobURL) &&
+                              !string.IsNullOrEmpty(data?.Operation) &&
+                              !string.IsNullOrEmpty(data?.UUID) &&
+                              !string.IsNullOrEmpty(data?.ShareName);
+
+                if (!isValid)
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        success = isValid,
+                        message = "Missing required parameters",
+                    });
+                }
+
+                string UserId = data?.UserId!;
+                string BlobURL = data?.BlobURL!;
+                string Operation = data?.Operation!;
+                string ShareName = data?.ShareName!;
+                string UUID = data?.UUID!;
+
+
+                BlobServiceClient blobServiceClient = new(connectionString);
+                string sourceContainerName = $"user-{UserId}";
+
+                BlobContainerClient sourceContainer = blobServiceClient.GetBlobContainerClient(sourceContainerName);
+                BlobContainerClient destinationContainer = blobServiceClient.GetBlobContainerClient("shares");
+
+                if (!await sourceContainer.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        success = false,
+                        message = "Source container not found"
+                    });
+                }
+
+                string BlobName = GetFileNameFromBlobUrl(BlobURL);
+                string FileExtension = GetFileExtension(BlobURL);
+                BlobClient sourceBlob = sourceContainer.GetBlobClient(BlobName);
+                if (!await sourceBlob.ExistsAsync())
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        success = false,
+                        message = "Source file not found"
+                    });
+                }
+
+                BlobClient destinationBlob = destinationContainer.GetBlobClient(ShareName + FileExtension);
+                await destinationBlob.StartCopyFromUriAsync(sourceBlob.Uri);
+                await DatabaseHelper.ShareFileDBOperation(UserId, ShareName, UUID, destinationBlob.Uri.ToString(), Operation);
+
+                return new OkObjectResult(new
+                {
+                    success = true,
+                    message = $"Successfully shared file '{BlobURL}' as '{destinationBlob.Uri}'",
+                    shareUrl = destinationBlob.Uri.ToString()
+                });
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new
+                {
+                    success = false,
+                    message = $"An error occurred: {ex.Message}"
+                })
+                { StatusCode = StatusCodes.Status500InternalServerError };
             }
         }
 
