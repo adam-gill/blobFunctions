@@ -613,7 +613,7 @@ namespace blobFunctions
                     });
                 }
 
-                BlobClient destinationBlob = destinationContainer.GetBlobClient(ShareName);
+                BlobClient destinationBlob = destinationContainer.GetBlobClient(ShareName + FileExtension);
                 await destinationBlob.StartCopyFromUriAsync(sourceBlob.Uri);
                 await DatabaseHelper.ShareFileDBOperation(UserId, UUID, ShareName, destinationBlob.Uri.ToString(), Operation);
 
