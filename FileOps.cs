@@ -67,6 +67,7 @@ namespace blobFunctions
             public string? BlobUrl { get; set; }
             public IDictionary<string, string>? Metadata { get; set; }
             public string? MD5Hash { get; set; }
+            public string? ETAG { get; set; }
         }
 
         public class ListFilesResponse
@@ -378,7 +379,8 @@ namespace blobFunctions
                     LastModified = properties.Value.LastModified,
                     BlobUrl = blobClient.Uri.ToString(),
                     Metadata = properties.Value.Metadata,
-                    MD5Hash = properties.Value.ContentHash != null ? Convert.ToBase64String(properties.Value.ContentHash) : null
+                    MD5Hash = properties.Value.ContentHash != null ? Convert.ToBase64String(properties.Value.ContentHash) : null,
+                    ETAG = properties.Value.ETag.ToString().Trim('"'),
                 };
 
                 return new OkObjectResult(new
@@ -459,7 +461,8 @@ namespace blobFunctions
                         LastModified = blobItem.Properties.LastModified,
                         BlobUrl = blobClient.Uri.ToString() + sasToken,
                         Metadata = properties.Value.Metadata,
-                        MD5Hash = Convert.ToBase64String(blobItem.Properties.ContentHash)
+                        MD5Hash = Convert.ToBase64String(blobItem.Properties.ContentHash),
+                        ETAG = properties.Value.ETag.ToString().Trim('"'),
                     });
                 }
 
