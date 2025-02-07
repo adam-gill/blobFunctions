@@ -144,7 +144,7 @@ namespace blobFunctions
 
         }
 
-        public static async Task ShareFileDBOperation(string UserId, string UUID, string ShareFileName, string PublicBlobURL, string Operation)
+        public static async Task ShareFileDBOperation(string UserId, string UUID, string ShareFileName, string PublicBlobURL, string Operation, string SourceETAG)
         {
 
             if (string.IsNullOrWhiteSpace(UserId) || string.IsNullOrWhiteSpace(UUID) || string.IsNullOrWhiteSpace(ShareFileName) || string.IsNullOrWhiteSpace(PublicBlobURL))
@@ -157,8 +157,8 @@ namespace blobFunctions
                 throw new ArgumentException($"Invalid operation parameter, accepted operations are 'create' and 'edit'. Operation was {Operation}.");
             }
             
-            string CreateQuery = @"INSERT INTO dbo.shares (name, ""publicBlobURL"", uuid, owner, time_created)
-                VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP)";
+            string CreateQuery = @"INSERT INTO dbo.shares (name, ""publicBlobURL"", uuid, owner, time_created, source_etag)
+                VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP @SourceETAG)";
             using var connection = new NpgsqlConnection(_connectionString);
             var command = new NpgsqlCommand(CreateQuery, connection);
             await connection.OpenAsync();
@@ -167,6 +167,7 @@ namespace blobFunctions
             command.Parameters.AddWithValue("@PublicBlobURL", PublicBlobURL); 
             command.Parameters.AddWithValue("@UUID", UUID);
             command.Parameters.AddWithValue("@UserId", UserId);
+            command.Parameters.AddWithValue("@SourceETAG", SourceETAG);
 
             await command.ExecuteNonQueryAsync();
         }

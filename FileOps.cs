@@ -604,6 +604,8 @@ namespace blobFunctions
                 string BlobName = GetFileNameFromBlobUrl(BlobURL);
                 string FileExtension = GetFileExtension(BlobURL);
                 BlobClient sourceBlob = sourceContainer.GetBlobClient(BlobName);
+                var sourceBlobProperties = await sourceBlob.GetPropertiesAsync();
+                string SourceETAG = sourceBlobProperties.Value.ETag.ToString();
                 if (!await sourceBlob.ExistsAsync())
                 {
                     return new NotFoundObjectResult(new
@@ -615,7 +617,7 @@ namespace blobFunctions
 
                 BlobClient destinationBlob = destinationContainer.GetBlobClient(ShareName + FileExtension);
                 await destinationBlob.StartCopyFromUriAsync(sourceBlob.Uri);
-                await DatabaseHelper.ShareFileDBOperation(UserId, UUID, ShareName, destinationBlob.Uri.ToString(), Operation);
+                await DatabaseHelper.ShareFileDBOperation(UserId, UUID, ShareName, destinationBlob.Uri.ToString(), Operation, SourceETAG);
 
                 return new OkObjectResult(new
                 {
