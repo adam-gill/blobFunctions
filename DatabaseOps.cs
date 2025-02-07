@@ -147,7 +147,7 @@ namespace blobFunctions
         public static async Task ShareFileDBOperation(string UserId, string UUID, string ShareFileName, string PublicBlobURL, string Operation, string SourceETAG)
         {
 
-            if (string.IsNullOrWhiteSpace(UserId) || string.IsNullOrWhiteSpace(UUID) || string.IsNullOrWhiteSpace(ShareFileName) || string.IsNullOrWhiteSpace(PublicBlobURL))
+            if (string.IsNullOrWhiteSpace(UserId) || string.IsNullOrWhiteSpace(UUID) || string.IsNullOrWhiteSpace(ShareFileName) || string.IsNullOrWhiteSpace(PublicBlobURL) || string.IsNullOrWhiteSpace(SourceETAG))
             {
                 throw new ArgumentException("Not all parameters were provided.");
             }
@@ -158,7 +158,7 @@ namespace blobFunctions
             }
             
             string CreateQuery = @"INSERT INTO dbo.shares (name, ""publicBlobURL"", uuid, owner, time_created, source_etag)
-                VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP @SourceETAG)";
+                VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP, @SourceETAG)";
             using var connection = new NpgsqlConnection(_connectionString);
             var command = new NpgsqlCommand(CreateQuery, connection);
             await connection.OpenAsync();

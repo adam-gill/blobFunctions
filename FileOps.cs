@@ -605,7 +605,7 @@ namespace blobFunctions
                 string FileExtension = GetFileExtension(BlobURL);
                 BlobClient sourceBlob = sourceContainer.GetBlobClient(BlobName);
                 var sourceBlobProperties = await sourceBlob.GetPropertiesAsync();
-                string SourceETAG = sourceBlobProperties.Value.ETag.ToString();
+                var SourceETAG = sourceBlobProperties.Value.ETag.ToString().Trim('"');
                 if (!await sourceBlob.ExistsAsync())
                 {
                     return new NotFoundObjectResult(new
