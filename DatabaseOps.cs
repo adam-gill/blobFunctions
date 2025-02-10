@@ -144,6 +144,39 @@ namespace blobFunctions
 
         }
 
+        public static async Task<string> DeletePublicFile(string Name, string Etag)
+        {
+            if (string.IsNullOrWhiteSpace(Name) || string.IsNullOrWhiteSpace(Etag))
+            {
+                throw new ArgumentException("Public file name and source etag are required");
+            }
+            string DeleteQuery = @"DELETE FROM dbo.shares WHERE name = @Name AND source_etag = @Etag";
+            string GetURLQuery = @"SELECT ""publicBlobURL"" from dbo.shares WHERE name = @Name AND source_etag = @Etag";
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+
+            var urlCommand = new NpgsqlCommand(GetURLQuery, connection);
+            urlCommand.Parameters.AddWithValue("@name", Name);
+            urlCommand.Parameters.AddWithValue("@etag", Etag);
+
+            string? url = await urlCommand.ExecuteScalarAsync() as string;
+            if (string.IsNullOrEmpty(url))
+            {
+                throw new InvalidOperationException("URL not found for the specified name and etag");
+            }
+
+            string fileName = Path.GetFileName(new Uri(url).AbsolutePath);
+
+            var deleteCommand = new NpgsqlCommand(DeleteQuery, connection);
+            deleteCommand.Parameters.AddWithValue("@name", Name);
+            deleteCommand.Parameters.AddWithValue("@etag", Etag);
+            await deleteCommand.ExecuteNonQueryAsync();
+
+            return fileName;
+        }
+
+
         public static async Task ShareFileDBOperation(string UserId, string UUID, string ShareFileName, string PublicBlobURL, string Operation, string SourceETAG)
         {
 
@@ -156,7 +189,7 @@ namespace blobFunctions
             {
                 throw new ArgumentException($"Invalid operation parameter, accepted operations are 'create' and 'edit'. Operation was {Operation}.");
             }
-            
+
             string CreateQuery = @"INSERT INTO dbo.shares (name, ""publicBlobURL"", uuid, owner, time_created, source_etag)
                 VALUES (@ShareFileName, @PublicBlobURL, @UUID, @UserId, CURRENT_TIMESTAMP, @SourceETAG)";
             using var connection = new NpgsqlConnection(_connectionString);
@@ -164,7 +197,7 @@ namespace blobFunctions
             await connection.OpenAsync();
 
             command.Parameters.AddWithValue("@ShareFileName", ShareFileName);
-            command.Parameters.AddWithValue("@PublicBlobURL", PublicBlobURL); 
+            command.Parameters.AddWithValue("@PublicBlobURL", PublicBlobURL);
             command.Parameters.AddWithValue("@UUID", UUID);
             command.Parameters.AddWithValue("@UserId", UserId);
             command.Parameters.AddWithValue("@SourceETAG", SourceETAG);

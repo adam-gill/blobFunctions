@@ -22,6 +22,16 @@ namespace blobFunctions
             public required string UserId { get; set; }
         }
 
+        public class DeletePublicFileRequest
+        {
+
+            [JsonPropertyName("name")]
+            public required string Name { get; set; }
+
+            [JsonPropertyName("etag")]
+            public required string Etag { get; set; }
+        }
+
         public class ShareFileRequest
         {
             [JsonPropertyName("userId")]
@@ -544,6 +554,65 @@ namespace blobFunctions
                 {
                     StatusCode = ex.Status
                 };
+            }
+            catch (Exception ex)
+            {
+                return new ObjectResult(new
+                {
+                    success = false,
+                    message = $"An error occurred: {ex.Message}"
+                })
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
+        }
+
+        [Function("DeletePublicFile")]
+        public static async Task<IActionResult> RunDeletePublicFile(
+        [HttpTrigger(AuthorizationLevel.Function, "delete", Route = "deletePublicFile")] HttpRequest req)
+        {
+
+            try
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                var data = JsonSerializer.Deserialize<DeletePublicFileRequest>(requestBody);
+
+                if (string.IsNullOrEmpty(data?.Name) || string.IsNullOrEmpty(data?.Etag))
+                {
+                    return new BadRequestObjectResult(new
+                    {
+                        success = false,
+                        message = "Public file name and source etag are required"
+                    });
+                }
+
+                string BlobName = await DatabaseHelper.DeletePublicFile(data.Name, data.Etag);
+
+                var blobServiceClient = new BlobServiceClient(connectionString);
+                var containerClient = blobServiceClient.GetBlobContainerClient("shares");
+                var blobClient = containerClient.GetBlobClient(BlobName);
+
+                bool blobWasDeleted = await blobClient.DeleteIfExistsAsync();
+
+                if (blobWasDeleted)
+                {
+                    return new OkObjectResult(new
+                    {
+                        success = true,
+                        message = $"Successfully deleted public file'{BlobName}'"
+                    });
+                }
+                else
+                {
+                    return new NotFoundObjectResult(new
+                    {
+                        success = false,
+                        message = $"Did not find public file for with name: {data.Name} and etag: {data.Etag}"
+                    });
+                }
+
+
             }
             catch (Exception ex)
             {
